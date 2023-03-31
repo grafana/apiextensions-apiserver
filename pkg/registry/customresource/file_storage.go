@@ -63,12 +63,12 @@ func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind,
 		func() runtime.Object {
 			ret := &unstructured.Unstructured{}
 			ret.SetGroupVersionKind(kind)
-			return nil
+			return ret
 		},
 		func() runtime.Object {
 			ret := &unstructured.Unstructured{}
 			ret.SetGroupVersionKind(listKind)
-			return nil
+			return ret
 		},
 	)
 
@@ -76,10 +76,8 @@ func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind,
 
 	if strategy.status != nil {
 		statusStore := *store
-		// TODO: what is this?
-		// statusStrategy := NewStatusStrategy(strategy)
-		// statusStore.UpdateStrategy = statusStrategy
-		// statusStore.ResetFieldsStrategy = statusStrategy
+		statusStrategy := NewStatusStrategy(strategy)
+		statusStore.Strategy = statusStrategy
 		storage.Status = &StatusREST{store: &statusStore}
 	}
 

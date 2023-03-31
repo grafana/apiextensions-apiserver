@@ -59,7 +59,7 @@ func NewFilepathREST(
 		objRootPath:    objRoot,
 		newFunc:        newFunc,
 		newListFunc:    newListFunc,
-		strategy:       strategy,
+		Strategy:       strategy,
 		groupResource:  groupResource,
 		fs:             fs,
 		watchSet:       ws,
@@ -75,7 +75,7 @@ type FilepathREST struct {
 	newFunc     func() runtime.Object
 	newListFunc func() runtime.Object
 
-	strategy      Strategy
+	Strategy      Strategy
 	groupResource schema.GroupResource
 	fs            FS
 	watchSet      *WatchSet
@@ -98,11 +98,11 @@ func (f *FilepathREST) Destroy() {
 }
 
 func (f *FilepathREST) NamespaceScoped() bool {
-	return f.strategy.NamespaceScoped()
+	return f.Strategy.NamespaceScoped()
 }
 
 func (f *FilepathREST) ShortNames() []string {
-	return f.strategy.ShortNames()
+	return f.Strategy.ShortNames()
 }
 
 func (f *FilepathREST) Get(
@@ -157,7 +157,7 @@ func (f *FilepathREST) Create(
 	}
 	rest.FillObjectMetaSystemFields(accessor)
 
-	if err := rest.BeforeCreate(f.strategy, ctx, obj); err != nil {
+	if err := rest.BeforeCreate(f.Strategy, ctx, obj); err != nil {
 		return nil, err
 	}
 
@@ -255,7 +255,7 @@ func (f *FilepathREST) Update(
 			return nil, f.conflictErr(name)
 		}
 
-		if err := rest.BeforeUpdate(f.strategy, ctx, output, input); err != nil {
+		if err := rest.BeforeUpdate(f.Strategy, ctx, output, input); err != nil {
 			return nil, err
 		}
 

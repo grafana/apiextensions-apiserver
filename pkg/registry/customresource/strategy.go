@@ -18,6 +18,7 @@ package customresource
 
 import (
 	"context"
+	"strings"
 
 	"k8s.io/kube-openapi/pkg/validation/validate"
 
@@ -95,7 +96,7 @@ func (a customResourceStrategy) NamespaceScoped() bool {
 
 // TODO: actually implement this
 func (a customResourceStrategy) ShortNames() []string {
-	return []string{}
+	return []string{strings.ToLower(a.kind.Kind)}
 }
 
 // GetResetFields returns the set of fields that get reset by the strategy
