@@ -26,6 +26,7 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel"
 	structurallisttype "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/listtype"
 	schemaobjectmeta "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/objectmeta"
+	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,6 +43,8 @@ import (
 
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
+
+var _ filepath.Strategy = (*customResourceStrategy)(nil)
 
 // customResourceStrategy implements behavior for CustomResources.
 type customResourceStrategy struct {
@@ -88,6 +91,11 @@ func NewStrategy(typer runtime.ObjectTyper, namespaceScoped bool, kind schema.Gr
 
 func (a customResourceStrategy) NamespaceScoped() bool {
 	return a.namespaceScoped
+}
+
+// TODO: actually implement this
+func (a customResourceStrategy) ShortNames() []string {
+	return []string{}
 }
 
 // GetResetFields returns the set of fields that get reset by the strategy

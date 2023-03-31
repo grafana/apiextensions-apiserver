@@ -19,47 +19,47 @@ package customresourcedefinition
 import (
 	"context"
 	"fmt"
+	"path"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
-	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
-	"k8s.io/apiserver/pkg/storage"
-	storageerr "k8s.io/apiserver/pkg/storage/errors"
-	"k8s.io/apiserver/pkg/util/dryrun"
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
 // rest implements a RESTStorage for API services against etcd
 type REST struct {
-	*genericregistry.Store
+	*filepath.FilepathREST
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter) (*REST, error) {
 	strategy := NewStrategy(scheme)
 
-	store := &genericregistry.Store{
-		NewFunc:                  func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
-		NewListFunc:              func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
-		PredicateFunc:            MatchCustomResourceDefinition,
-		DefaultQualifiedResource: apiextensions.Resource("customresourcedefinitions"),
+	fs := filepath.RealFS{}
+	ws := filepath.NewWatchSet()
 
-		CreateStrategy:      strategy,
-		UpdateStrategy:      strategy,
-		DeleteStrategy:      strategy,
-		ResetFieldsStrategy: strategy,
-
-		// TODO: define table converter that exposes more than name/creation timestamp
-		TableConvertor: rest.NewDefaultTableConvertor(apiextensions.Resource("customresourcedefinitions")),
-	}
-	options := &generic.StoreOptions{RESTOptions: optsGetter, AttrFunc: GetAttrs}
-	if err := store.CompleteWithOptions(options); err != nil {
+	gr := apiextensions.Resource("customresourcedefinitions")
+	opt, err := optsGetter.GetRESTOptions(gr)
+	if err != nil {
 		return nil, err
 	}
+	codec := opt.StorageConfig.Codec
+	store := filepath.NewFilepathREST(
+		fs,
+		ws,
+		strategy,
+		gr,
+		codec,
+		path.Join("data/k8s/resources", gr.String()),
+		func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
+		func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
+	)
+
 	return &REST{store}, nil
 }
 
@@ -101,7 +101,7 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 		err = apierrors.NewConflict(
 			apiextensions.Resource("customresourcedefinitions"),
 			name,
-			fmt.Errorf("Precondition failed: UID in precondition: %v, UID in object meta: %v", *options.Preconditions.UID, crd.UID),
+			fmt.Errorf("precondition failed: UID in precondition: %v, UID in object meta: %v", *options.Preconditions.UID, crd.UID),
 		)
 		return nil, false, err
 	}
@@ -109,84 +109,23 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 		err = apierrors.NewConflict(
 			apiextensions.Resource("customresourcedefinitions"),
 			name,
-			fmt.Errorf("Precondition failed: ResourceVersion in precondition: %v, ResourceVersion in object meta: %v", *options.Preconditions.ResourceVersion, crd.ResourceVersion),
+			fmt.Errorf("precondition failed: ResourceVersion in precondition: %v, ResourceVersion in object meta: %v", *options.Preconditions.ResourceVersion, crd.ResourceVersion),
 		)
 		return nil, false, err
 	}
 
-	// upon first request to delete, add our finalizer and then delegate
-	if crd.DeletionTimestamp.IsZero() {
-		key, err := r.Store.KeyFunc(ctx, name)
-		if err != nil {
-			return nil, false, err
-		}
-
-		preconditions := storage.Preconditions{UID: options.Preconditions.UID, ResourceVersion: options.Preconditions.ResourceVersion}
-
-		out := r.Store.NewFunc()
-		err = r.Store.Storage.GuaranteedUpdate(
-			ctx, key, out, false, &preconditions,
-			storage.SimpleUpdate(func(existing runtime.Object) (runtime.Object, error) {
-				existingCRD, ok := existing.(*apiextensions.CustomResourceDefinition)
-				if !ok {
-					// wrong type
-					return nil, fmt.Errorf("expected *apiextensions.CustomResourceDefinition, got %v", existing)
-				}
-				if err := deleteValidation(ctx, existingCRD); err != nil {
-					return nil, err
-				}
-
-				// Set the deletion timestamp if needed
-				if existingCRD.DeletionTimestamp.IsZero() {
-					now := metav1.Now()
-					existingCRD.DeletionTimestamp = &now
-				}
-
-				if !apiextensions.CRDHasFinalizer(existingCRD, apiextensions.CustomResourceCleanupFinalizer) {
-					existingCRD.Finalizers = append(existingCRD.Finalizers, apiextensions.CustomResourceCleanupFinalizer)
-				}
-				// update the status condition too
-				apiextensions.SetCRDCondition(existingCRD, apiextensions.CustomResourceDefinitionCondition{
-					Type:    apiextensions.Terminating,
-					Status:  apiextensions.ConditionTrue,
-					Reason:  "InstanceDeletionPending",
-					Message: "CustomResourceDefinition marked for deletion; CustomResource deletion will begin soon",
-				})
-				return existingCRD, nil
-			}),
-			dryrun.IsDryRun(options.DryRun),
-			nil,
-		)
-
-		if err != nil {
-			err = storageerr.InterpretGetError(err, apiextensions.Resource("customresourcedefinitions"), name)
-			err = storageerr.InterpretUpdateError(err, apiextensions.Resource("customresourcedefinitions"), name)
-			if _, ok := err.(*apierrors.StatusError); !ok {
-				err = apierrors.NewInternalError(err)
-			}
-			return nil, false, err
-		}
-
-		return out, false, nil
-	}
-
-	return r.Store.Delete(ctx, name, deleteValidation, options)
+	return r.Delete(ctx, name, deleteValidation, options)
 }
 
 // NewStatusREST makes a RESTStorage for status that has more limited options.
 // It is based on the original REST so that we can share the same underlying store
-func NewStatusREST(scheme *runtime.Scheme, rest *REST) *StatusREST {
-	statusStore := *rest.Store
-	statusStore.CreateStrategy = nil
-	statusStore.DeleteStrategy = nil
-	statusStrategy := NewStatusStrategy(scheme)
-	statusStore.UpdateStrategy = statusStrategy
-	statusStore.ResetFieldsStrategy = statusStrategy
+func NewStatusREST(scheme *runtime.Scheme, r *REST) *StatusREST {
+	statusStore := *r.FilepathREST
 	return &StatusREST{store: &statusStore}
 }
 
 type StatusREST struct {
-	store *genericregistry.Store
+	store *filepath.FilepathREST
 }
 
 var _ = rest.Patcher(&StatusREST{})
@@ -215,5 +154,7 @@ func (r *StatusREST) Update(ctx context.Context, name string, objInfo rest.Updat
 
 // GetResetFields implements rest.ResetFieldsStrategy
 func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
-	return r.store.GetResetFields()
+	// TODO: implement this?
+	// return r.store.GetResetFields()
+	return map[fieldpath.APIVersion]*fieldpath.Set{}
 }

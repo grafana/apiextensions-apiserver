@@ -19,9 +19,11 @@ package customresource
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -29,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	"k8s.io/apiserver/pkg/registry/generic"
-	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
@@ -41,42 +42,44 @@ type CustomResourceStorage struct {
 	Scale          *ScaleREST
 }
 
-func NewStorage(resource schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings) CustomResourceStorage {
+func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings) CustomResourceStorage {
 	var storage CustomResourceStorage
-	store := &genericregistry.Store{
-		NewFunc: func() runtime.Object {
-			// set the expected group/version/kind in the new object as a signal to the versioning decoder
+
+	fs := filepath.RealFS{}
+	ws := filepath.NewWatchSet()
+
+	opt, err := optsGetter.GetRESTOptions(gr)
+	if err != nil {
+		panic(err)
+	}
+	codec := opt.StorageConfig.Codec
+	store := filepath.NewFilepathREST(
+		fs,
+		ws,
+		strategy,
+		gr,
+		codec,
+		path.Join("data/k8s/resources", kind.String()),
+		func() runtime.Object {
 			ret := &unstructured.Unstructured{}
 			ret.SetGroupVersionKind(kind)
-			return ret
+			return nil
 		},
-		NewListFunc: func() runtime.Object {
-			// lists are never stored, only manufactured, so stomp in the right kind
-			ret := &unstructured.UnstructuredList{}
+		func() runtime.Object {
+			ret := &unstructured.Unstructured{}
 			ret.SetGroupVersionKind(listKind)
-			return ret
+			return nil
 		},
-		PredicateFunc:            strategy.MatchCustomResourceDefinitionStorage,
-		DefaultQualifiedResource: resource,
+	)
 
-		CreateStrategy:      strategy,
-		UpdateStrategy:      strategy,
-		DeleteStrategy:      strategy,
-		ResetFieldsStrategy: strategy,
-
-		TableConvertor: tableConvertor,
-	}
-	options := &generic.StoreOptions{RESTOptions: optsGetter, AttrFunc: strategy.GetAttrs}
-	if err := store.CompleteWithOptions(options); err != nil {
-		panic(err) // TODO: Propagate error up
-	}
 	storage.CustomResource = &REST{store, categories}
 
 	if strategy.status != nil {
 		statusStore := *store
-		statusStrategy := NewStatusStrategy(strategy)
-		statusStore.UpdateStrategy = statusStrategy
-		statusStore.ResetFieldsStrategy = statusStrategy
+		// TODO: what is this?
+		// statusStrategy := NewStatusStrategy(strategy)
+		// statusStore.UpdateStrategy = statusStrategy
+		// statusStore.ResetFieldsStrategy = statusStrategy
 		storage.Status = &StatusREST{store: &statusStore}
 	}
 
@@ -101,7 +104,7 @@ func NewStorage(resource schema.GroupResource, kind, listKind schema.GroupVersio
 
 // REST implements a RESTStorage for API services against etcd
 type REST struct {
-	*genericregistry.Store
+	*filepath.FilepathREST
 	categories []string
 }
 
@@ -115,7 +118,7 @@ func (r *REST) Categories() []string {
 
 // StatusREST implements the REST endpoint for changing the status of a CustomResource
 type StatusREST struct {
-	store *genericregistry.Store
+	store *filepath.FilepathREST
 }
 
 var _ = rest.Patcher(&StatusREST{})
@@ -142,11 +145,11 @@ func (r *StatusREST) Update(ctx context.Context, name string, objInfo rest.Updat
 
 // GetResetFields implements rest.ResetFieldsStrategy
 func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
-	return r.store.GetResetFields()
+	return map[fieldpath.APIVersion]*fieldpath.Set{}
 }
 
 type ScaleREST struct {
-	store               *genericregistry.Store
+	store               *filepath.FilepathREST
 	specReplicasPath    string
 	statusReplicasPath  string
 	labelSelectorPath   string
@@ -337,7 +340,7 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		return nil, err
 	}
 	if obj == nil {
-		return nil, apierrors.NewBadRequest(fmt.Sprintf("nil update passed to Scale"))
+		return nil, apierrors.NewBadRequest("nil update passed to Scale")
 	}
 
 	scale, ok := obj.(*autoscalingv1.Scale)

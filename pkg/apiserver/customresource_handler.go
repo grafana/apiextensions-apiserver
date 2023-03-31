@@ -572,7 +572,7 @@ func (r *crdHandler) tearDown(oldInfo *crdInfo) {
 
 	for _, storage := range oldInfo.storages {
 		// destroy only the main storage. Those for the subresources share cacher and etcd clients.
-		storage.CustomResource.DestroyFunc()
+		storage.CustomResource.Destroy()
 	}
 }
 
@@ -588,7 +588,7 @@ func (r *crdHandler) destroy() {
 			// DestroyFunc have to be implemented in idempotent way,
 			// so the potential race with r.tearDown() (being called
 			// from a goroutine) is safe.
-			storage.CustomResource.DestroyFunc()
+			storage.CustomResource.Destroy()
 		}
 	}
 }
@@ -874,7 +874,9 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 			MaxRequestBodyBytes: r.maxRequestBodyBytes,
 		}
 
-		resetFields := storages[v.Name].CustomResource.GetResetFields()
+		// TODO temporarily disable this since it's not implemented in tilt's storage
+		// resetFields := storages[v.Name].CustomResource.GetResetFields()
+		resetFields := map[fieldpath.APIVersion]*fieldpath.Set{}
 		reqScope, err = scopeWithFieldManager(
 			typeConverter,
 			reqScope,

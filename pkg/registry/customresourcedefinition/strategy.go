@@ -50,6 +50,10 @@ func (strategy) NamespaceScoped() bool {
 	return false
 }
 
+func (strategy) ShortNames() []string {
+	return []string{"crd"}
+}
+
 // GetResetFields returns the set of fields that get reset by the strategy
 // and should not be modified by the user.
 func (strategy) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
