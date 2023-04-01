@@ -35,6 +35,8 @@ var _ rest.StandardStorage = &FilepathREST{}
 var _ rest.Scoper = &FilepathREST{}
 var _ rest.Storage = &FilepathREST{}
 var _ rest.ShortNamesProvider = &FilepathREST{}
+var _ rest.TableConvertor = &FilepathREST{}
+var _ registry.GenericStore = &FilepathREST{}
 
 // NewFilepathREST instantiates a new REST storage.
 func NewFilepathREST(
@@ -43,6 +45,7 @@ func NewFilepathREST(
 	strategy Strategy,
 	groupResource schema.GroupResource,
 	codec runtime.Codec,
+	tableConvertor rest.TableConvertor,
 	rootpath string,
 	newFunc func() runtime.Object,
 	newListFunc func() runtime.Object,
@@ -54,7 +57,7 @@ func NewFilepathREST(
 
 	// file REST
 	rest := &FilepathREST{
-		TableConvertor: rest.NewDefaultTableConvertor(groupResource),
+		TableConvertor: tableConvertor,
 		codec:          codec,
 		objRootPath:    objRoot,
 		newFunc:        newFunc,
@@ -91,6 +94,18 @@ func (f *FilepathREST) New() runtime.Object {
 
 func (f *FilepathREST) NewList() runtime.Object {
 	return f.newListFunc()
+}
+
+func (f *FilepathREST) GetCreateStrategy() rest.RESTCreateStrategy {
+	return f.Strategy
+}
+
+func (f *FilepathREST) GetUpdateStrategy() rest.RESTUpdateStrategy {
+	return f.Strategy
+}
+
+func (f *FilepathREST) GetDeleteStrategy() rest.RESTDeleteStrategy {
+	return f.Strategy
 }
 
 func (f *FilepathREST) Destroy() {

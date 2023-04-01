@@ -55,6 +55,7 @@ func NewREST(scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter) (*RES
 		strategy,
 		gr,
 		codec,
+		rest.NewDefaultTableConvertor(apiextensions.Resource("customresourcedefinitions")),
 		path.Join("data/k8s/resources", gr.String()),
 		func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
 		func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
@@ -121,6 +122,8 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 // It is based on the original REST so that we can share the same underlying store
 func NewStatusREST(scheme *runtime.Scheme, r *REST) *StatusREST {
 	statusStore := *r.FilepathREST
+	statusStrategy := NewStatusStrategy(scheme)
+	statusStore.Strategy = statusStrategy
 	return &StatusREST{store: &statusStore}
 }
 

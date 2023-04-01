@@ -51,7 +51,7 @@ func (strategy) NamespaceScoped() bool {
 }
 
 func (strategy) ShortNames() []string {
-	return []string{"crd"}
+	return []string{"crd", "crds"}
 }
 
 // GetResetFields returns the set of fields that get reset by the strategy
@@ -163,6 +163,13 @@ func (statusStrategy) NamespaceScoped() bool {
 	return false
 }
 
+func (statusStrategy) ShortNames() []string {
+	return []string{"crd", "crds"}
+}
+
+// WarningsOnCreate returns warnings for the creation of the given object.
+func (statusStrategy) WarningsOnCreate(ctx context.Context, obj runtime.Object) []string { return nil }
+
 // GetResetFields returns the set of fields that get reset by the strategy
 // and should not be modified by the user.
 func (statusStrategy) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
@@ -178,7 +185,14 @@ func (statusStrategy) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
 	}
 
 	return fields
+
 }
+
+func (statusStrategy) Validate(ctx context.Context, obj runtime.Object) field.ErrorList {
+	return validation.ValidateCustomResourceDefinition(ctx, obj.(*apiextensions.CustomResourceDefinition))
+}
+
+func (statusStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {}
 
 func (statusStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
 	newObj := obj.(*apiextensions.CustomResourceDefinition)

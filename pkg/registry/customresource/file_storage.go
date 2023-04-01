@@ -59,6 +59,7 @@ func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind,
 		strategy,
 		gr,
 		codec,
+		tableConvertor,
 		path.Join("data/k8s/resources", kind.String()),
 		func() runtime.Object {
 			ret := &unstructured.Unstructured{}
@@ -66,7 +67,7 @@ func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind,
 			return ret
 		},
 		func() runtime.Object {
-			ret := &unstructured.Unstructured{}
+			ret := &unstructured.UnstructuredList{}
 			ret.SetGroupVersionKind(listKind)
 			return ret
 		},
