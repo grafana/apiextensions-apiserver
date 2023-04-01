@@ -155,6 +155,5 @@ func (r *StatusREST) Update(ctx context.Context, name string, objInfo rest.Updat
 // GetResetFields implements rest.ResetFieldsStrategy
 func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
 	// TODO: implement this?
-	// return r.store.GetResetFields()
-	return map[fieldpath.APIVersion]*fieldpath.Set{}
+	return r.store.Strategy.GetResetFields()
 }
