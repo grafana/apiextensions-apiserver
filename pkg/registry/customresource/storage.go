@@ -49,7 +49,22 @@ type CustomResourceStorage struct {
 func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings) CustomResourceStorage {
 	var storage CustomResourceStorage
 
-	store, err := Storage(gr, kind, listKind, strategy, optsGetter, tableConvertor)
+	store, err := Storage(
+		gr,
+		strategy,
+		optsGetter,
+		tableConvertor,
+		func() runtime.Object {
+			ret := &unstructured.Unstructured{}
+			ret.SetGroupVersionKind(kind)
+			return ret
+		},
+		func() runtime.Object {
+			ret := &unstructured.UnstructuredList{}
+			ret.SetGroupVersionKind(listKind)
+			return ret
+		},
+	)
 	if err != nil {
 		panic(err)
 	}

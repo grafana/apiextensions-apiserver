@@ -32,7 +32,8 @@ import (
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
-var NewStorage storage.NewStorageFunc = filepath.Storage
+// override this if you want to set custom storage
+var Storage storage.NewStorageFunc = filepath.Storage
 
 // rest implements a RESTStorage for API services against etcd
 type REST struct {
@@ -43,10 +44,15 @@ type REST struct {
 func NewREST(scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter) (*REST, error) {
 	strategy := NewStrategy(scheme)
 	gr := apiextensions.Resource("customresourcedefinitions")
-	kind := &apiextensions.CustomResourceDefinition{}
-	kindList := &apiextensions.CustomResourceDefinitionList{}
 	tableConvertor := rest.NewDefaultTableConvertor(apiextensions.Resource("customresourcedefinitions"))
-	store, err := NewStorage(gr, kind.GroupVersionKind(), kindList.GroupVersionKind(), strategy, optsGetter, tableConvertor)
+	store, err := Storage(
+		gr,
+		strategy,
+		optsGetter,
+		tableConvertor,
+		func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
+		func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
+	)
 	if err != nil {
 		return nil, err
 	}

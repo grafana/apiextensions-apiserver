@@ -3,7 +3,6 @@ package filepath
 import (
 	"path"
 
-	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
 	customStorage "k8s.io/apiextensions-apiserver/pkg/storage"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -11,11 +10,14 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 )
 
+var _ customStorage.NewStorageFunc = Storage
+
 func Storage(gr schema.GroupResource,
-	kind, listKind schema.GroupVersionKind,
 	strategy customStorage.Strategy,
 	optsGetter generic.RESTOptionsGetter,
 	tableConvertor rest.TableConvertor,
+	newFunc func() runtime.Object,
+	newListFunc func() runtime.Object,
 ) (customStorage.Storage, error) {
 	fs := RealFS{}
 	ws := NewWatchSet()
@@ -33,8 +35,8 @@ func Storage(gr schema.GroupResource,
 		codec,
 		tableConvertor,
 		path.Join("data/k8s/resources", gr.String()),
-		func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
-		func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
+		newFunc,
+		newListFunc,
 	)
 	return store, nil
 }
