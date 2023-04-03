@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"time"
 
+	customStorage "k8s.io/apiextensions-apiserver/pkg/storage"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
@@ -31,18 +32,13 @@ var ErrFileNotExists = fmt.Errorf("file doesn't exist")
 // ErrNamespaceNotExists means the directory for the namespace doesn't actually exist.
 var ErrNamespaceNotExists = errors.New("namespace does not exist")
 
-var _ rest.StandardStorage = &FilepathREST{}
-var _ rest.Scoper = &FilepathREST{}
-var _ rest.Storage = &FilepathREST{}
-var _ rest.ShortNamesProvider = &FilepathREST{}
-var _ rest.TableConvertor = &FilepathREST{}
-var _ registry.GenericStore = &FilepathREST{}
+var _ customStorage.Storage = &FilepathREST{}
 
 // NewFilepathREST instantiates a new REST storage.
 func NewFilepathREST(
 	fs FS,
 	ws *WatchSet,
-	strategy Strategy,
+	strategy customStorage.Strategy,
 	groupResource schema.GroupResource,
 	codec runtime.Codec,
 	tableConvertor rest.TableConvertor,
@@ -78,7 +74,7 @@ type FilepathREST struct {
 	newFunc     func() runtime.Object
 	newListFunc func() runtime.Object
 
-	Strategy      Strategy
+	Strategy      customStorage.Strategy
 	groupResource schema.GroupResource
 	fs            FS
 	watchSet      *WatchSet
@@ -106,6 +102,14 @@ func (f *FilepathREST) GetUpdateStrategy() rest.RESTUpdateStrategy {
 
 func (f *FilepathREST) GetDeleteStrategy() rest.RESTDeleteStrategy {
 	return f.Strategy
+}
+
+func (f *FilepathREST) GetStrategy() customStorage.Strategy {
+	return f.Strategy
+}
+
+func (f *FilepathREST) SetStrategy(s customStorage.Strategy) {
+	f.Strategy = s
 }
 
 func (f *FilepathREST) Destroy() {

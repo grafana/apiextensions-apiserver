@@ -19,10 +19,11 @@ package customresource
 import (
 	"context"
 	"fmt"
-	"path"
 	"strings"
 
 	autoscalingv1 "k8s.io/api/autoscaling/v1"
+	"k8s.io/apiextensions-apiserver/pkg/storage"
+	customStorage "k8s.io/apiextensions-apiserver/pkg/storage"
 	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,6 +36,9 @@ import (
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
+// override this if you want to set custom storage
+var Storage storage.NewStorageFunc = filepath.Storage
+
 // CustomResourceStorage includes dummy storage for CustomResources, and their Status and Scale subresources.
 type CustomResourceStorage struct {
 	CustomResource *REST
@@ -45,41 +49,18 @@ type CustomResourceStorage struct {
 func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind, strategy customResourceStrategy, optsGetter generic.RESTOptionsGetter, categories []string, tableConvertor rest.TableConvertor, replicasPathMapping fieldmanager.ResourcePathMappings) CustomResourceStorage {
 	var storage CustomResourceStorage
 
-	fs := filepath.RealFS{}
-	ws := filepath.NewWatchSet()
-
-	opt, err := optsGetter.GetRESTOptions(gr)
+	store, err := Storage(gr, kind, listKind, strategy, optsGetter, tableConvertor)
 	if err != nil {
 		panic(err)
 	}
-	codec := opt.StorageConfig.Codec
-	store := filepath.NewFilepathREST(
-		fs,
-		ws,
-		strategy,
-		gr,
-		codec,
-		tableConvertor,
-		path.Join("data/k8s/resources", kind.String()),
-		func() runtime.Object {
-			ret := &unstructured.Unstructured{}
-			ret.SetGroupVersionKind(kind)
-			return ret
-		},
-		func() runtime.Object {
-			ret := &unstructured.UnstructuredList{}
-			ret.SetGroupVersionKind(listKind)
-			return ret
-		},
-	)
 
 	storage.CustomResource = &REST{store, categories}
 
 	if strategy.status != nil {
-		statusStore := *store
+		statusStore := store
 		statusStrategy := NewStatusStrategy(strategy)
-		statusStore.Strategy = statusStrategy
-		storage.Status = &StatusREST{store: &statusStore}
+		statusStore.SetStrategy(statusStrategy)
+		storage.Status = &StatusREST{store: statusStore}
 	}
 
 	if scale := strategy.scale; scale != nil {
@@ -103,7 +84,7 @@ func NewStorage(gr schema.GroupResource, kind, listKind schema.GroupVersionKind,
 
 // REST implements a RESTStorage for API services against etcd
 type REST struct {
-	*filepath.FilepathREST
+	customStorage.Storage
 	categories []string
 }
 
@@ -117,7 +98,7 @@ func (r *REST) Categories() []string {
 
 // StatusREST implements the REST endpoint for changing the status of a CustomResource
 type StatusREST struct {
-	store *filepath.FilepathREST
+	store customStorage.Storage
 }
 
 var _ = rest.Patcher(&StatusREST{})
@@ -144,11 +125,11 @@ func (r *StatusREST) Update(ctx context.Context, name string, objInfo rest.Updat
 
 // GetResetFields implements rest.ResetFieldsStrategy
 func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
-	return r.store.Strategy.GetResetFields()
+	return r.store.GetStrategy().GetResetFields()
 }
 
 type ScaleREST struct {
-	store               *filepath.FilepathREST
+	store               customStorage.Storage
 	specReplicasPath    string
 	statusReplicasPath  string
 	labelSelectorPath   string

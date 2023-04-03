@@ -19,9 +19,10 @@ package customresourcedefinition
 import (
 	"context"
 	"fmt"
-	"path"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	"k8s.io/apiextensions-apiserver/pkg/storage"
+	customStorage "k8s.io/apiextensions-apiserver/pkg/storage"
 	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,36 +32,24 @@ import (
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
+var NewStorage storage.NewStorageFunc = filepath.Storage
+
 // rest implements a RESTStorage for API services against etcd
 type REST struct {
-	*filepath.FilepathREST
+	customStorage.Storage
 }
 
 // NewREST returns a RESTStorage object that will work against API services.
 func NewREST(scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter) (*REST, error) {
 	strategy := NewStrategy(scheme)
-
-	fs := filepath.RealFS{}
-	ws := filepath.NewWatchSet()
-
 	gr := apiextensions.Resource("customresourcedefinitions")
-	opt, err := optsGetter.GetRESTOptions(gr)
+	kind := &apiextensions.CustomResourceDefinition{}
+	kindList := &apiextensions.CustomResourceDefinitionList{}
+	tableConvertor := rest.NewDefaultTableConvertor(apiextensions.Resource("customresourcedefinitions"))
+	store, err := NewStorage(gr, kind.GroupVersionKind(), kindList.GroupVersionKind(), strategy, optsGetter, tableConvertor)
 	if err != nil {
 		return nil, err
 	}
-	codec := opt.StorageConfig.Codec
-	store := filepath.NewFilepathREST(
-		fs,
-		ws,
-		strategy,
-		gr,
-		codec,
-		rest.NewDefaultTableConvertor(apiextensions.Resource("customresourcedefinitions")),
-		path.Join("data/k8s/resources", gr.String()),
-		func() runtime.Object { return &apiextensions.CustomResourceDefinition{} },
-		func() runtime.Object { return &apiextensions.CustomResourceDefinitionList{} },
-	)
-
 	return &REST{store}, nil
 }
 
@@ -121,14 +110,14 @@ func (r *REST) Delete(ctx context.Context, name string, deleteValidation rest.Va
 // NewStatusREST makes a RESTStorage for status that has more limited options.
 // It is based on the original REST so that we can share the same underlying store
 func NewStatusREST(scheme *runtime.Scheme, r *REST) *StatusREST {
-	statusStore := *r.FilepathREST
+	statusStore := r.Storage
 	statusStrategy := NewStatusStrategy(scheme)
-	statusStore.Strategy = statusStrategy
-	return &StatusREST{store: &statusStore}
+	statusStore.SetStrategy(statusStrategy)
+	return &StatusREST{store: statusStore}
 }
 
 type StatusREST struct {
-	store *filepath.FilepathREST
+	store customStorage.Storage
 }
 
 var _ = rest.Patcher(&StatusREST{})
@@ -157,6 +146,5 @@ func (r *StatusREST) Update(ctx context.Context, name string, objInfo rest.Updat
 
 // GetResetFields implements rest.ResetFieldsStrategy
 func (r *StatusREST) GetResetFields() map[fieldpath.APIVersion]*fieldpath.Set {
-	// TODO: implement this?
-	return r.store.Strategy.GetResetFields()
+	return r.store.GetStrategy().GetResetFields()
 }

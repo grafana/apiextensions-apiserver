@@ -27,7 +27,7 @@ import (
 	"k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel"
 	structurallisttype "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/listtype"
 	schemaobjectmeta "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/objectmeta"
-	"k8s.io/apiextensions-apiserver/pkg/storage/filepath"
+	customStorage "k8s.io/apiextensions-apiserver/pkg/storage"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,7 +45,7 @@ import (
 	"sigs.k8s.io/structured-merge-diff/v4/fieldpath"
 )
 
-var _ filepath.Strategy = (*customResourceStrategy)(nil)
+var _ customStorage.Strategy = (*customResourceStrategy)(nil)
 
 // customResourceStrategy implements behavior for CustomResources.
 type customResourceStrategy struct {
